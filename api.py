@@ -6,13 +6,13 @@ from datetime import datetime
 app = Flask(__name__)
 
 # 🔑 Teri API Key
-VALID_KEY = "Demo"
+VALID_KEY = "DEMO"
 
-# Original API details
-ORIGINAL_API_URL = "http://uersxinfo.in/api"
-ORIGINAL_KEY = "newd64"
+# 🔥 Original API details — Environment Variable se lo (code mein mat dikha)
+ORIGINAL_API_URL = os.environ.get('ORIGINAL_API_URL', 'http://uersxinfo.in/api')
+ORIGINAL_KEY = os.environ.get('ORIGINAL_KEY', 'newd64')
 
-# 🔥 API Expiry Date (31 December 2026)
+# 🔥 API Expiry Date (19 September 2026)
 API_EXPIRY = "2026-09-19"
 
 def is_expired():
@@ -34,7 +34,7 @@ def home():
         "endpoints": {
             "info": "/api?key=YOUR_KEY&type=veh_numm&term=VEHICLE_NUMBER"
         },
-        "example": "/api?key=Demo&type=veh_numm&term=UP16EY3536"
+        "example": "/api?key=DEMO&type=veh_numm&term=UP16EY3536"
     })
 
 @app.route('/api')
@@ -70,83 +70,72 @@ def vehicle_info():
     }
     
     try:
-        response = requests.get(ORIGINAL_API_URL, params=params, timeout=15)
+        response = requests.get(ORIGINAL_API_URL, params=params, timeout=10)
         response.raise_for_status()
         data = response.json()
         
         if isinstance(data, dict):
-            # 🔥 Check if data exists
-            mobile_number = None
-            vehicle_number = None
+            # Remove unwanted fields
+            data.pop('developer', None)
+            data.pop('key_details', None)
+            data.pop('status_code', None)
+            data.pop('http_status', None)
             
             if 'data' in data and isinstance(data['data'], dict):
-                if 'data' in data['data'] and isinstance(data['data']['data'], dict):
-                    mobile_number = data['data']['data'].get('mobile_number')
-                    vehicle_number = data['data']['data'].get('vehicle_number')
-                elif 'mobileNumber' in data:
-                    mobile_number = data.get('mobileNumber')
-                    vehicle_number = data.get('vehicleNumber')
+                data['data'].pop('response_time_seconds', None)
+                data['data'].pop('limitsInfo', None)
+                data['data'].pop('success', None)
+                data['data'].pop('cached', None)
+                data['data'].pop('response_time', None)
             
-            if not mobile_number or mobile_number == "":
-                return jsonify({
-                    "status": False,
-                    "message": "No data found",
-                    "developer": "@x_TRACEOWNER",
-                    "credit": "@x_TRACEOWNER"
-                }), 404
+            if not data.get('mobileNumber') or data.get('mobileNumber') == "":
+                return jsonify({"status": False, "message": "No data found", "developer": "@x_TRACEOWNER", "credit": "@x_TRACEOWNER"}), 404
             
-            # 🔥 Exact format — jaise tune dikhaya
+            # 🔥 Clean response
             response_data = {
-                "credit": "@x_TRACEOWNER",
+                "status": "success",
+                "vehicleNumber": data.get('vehicleNumber', term),
+                "mobileNumber": data.get('mobileNumber', ''),
+                "mobileDetected": data.get('mobileDetected', True),
                 "data": {
                     "data": {
-                        "mobile_number": mobile_number,
-                        "vehicle_number": vehicle_number or term
+                        "vehicle_number": data.get('vehicleNumber', term),
+                        "mobile_number": data.get('mobileNumber', '')
                     }
                 },
-                "developer": "@x_TRACEOWNER",
-                "mobileDetected": True,
-                "mobileNumber": mobile_number,
-                "status": "success",
                 "success": True,
-                "vehicleNumber": vehicle_number or term,
+                "developer": "@x_TRACEOWNER",
+                "credit": "@x_TRACEOWNER",
                 "api_expires_on": API_EXPIRY
             }
             
             return jsonify(response_data)
         
-        return jsonify({
-            "status": False,
-            "message": "No data found",
-            "developer": "@x_TRACEOWNER",
-            "credit": "@x_TRACEOWNER"
-        }), 404
+        return jsonify({"status": False, "message": "No data found", "developer": "@x_TRACEOWNER", "credit": "@x_TRACEOWNER"}), 404
         
-    except Exception as e:
-        return jsonify({
-            "status": False,
-            "message": "No data found",
-            "developer": "@x_TRACEOWNER",
-            "credit": "@x_TRACEOWNER"
-        }), 404
+    except requests.exceptions.Timeout:
+        return jsonify({"status": False, "message": "Request timeout. Please try again later.", "developer": "@x_TRACEOWNER", "credit": "@x_TRACEOWNER"}), 504
+        
+    except requests.exceptions.ConnectionError:
+        return jsonify({"status": False, "message": "No data found", "developer": "@x_TRACEOWNER", "credit": "@x_TRACEOWNER"}), 404
+        
+    except requests.exceptions.RequestException:
+        return jsonify({"status": False, "message": "No data found", "developer": "@x_TRACEOWNER", "credit": "@x_TRACEOWNER"}), 404
+        
+    except Exception:
+        return jsonify({"status": False, "message": "No data found", "developer": "@x_TRACEOWNER", "credit": "@x_TRACEOWNER"}), 404
+
+@app.route('/api/<path:path>')
+def catch_all(path):
+    return jsonify({"status": False, "message": "No data found", "developer": "@x_TRACEOWNER", "credit": "@x_TRACEOWNER"}), 404
 
 @app.errorhandler(404)
 def not_found(error):
-    return jsonify({
-        "status": False,
-        "message": "No data found",
-        "developer": "@x_TRACEOWNER",
-        "credit": "@x_TRACEOWNER"
-    }), 404
+    return jsonify({"status": False, "message": "No data found", "developer": "@x_TRACEOWNER", "credit": "@x_TRACEOWNER"}), 404
 
 @app.errorhandler(500)
 def internal_error(error):
-    return jsonify({
-        "status": False,
-        "message": "No data found",
-        "developer": "@x_TRACEOWNER",
-        "credit": "@x_TRACEOWNER"
-    }), 404
+    return jsonify({"status": False, "message": "No data found", "developer": "@x_TRACEOWNER", "credit": "@x_TRACEOWNER"}), 404
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
