@@ -5,22 +5,31 @@ from datetime import datetime
 
 app = Flask(__name__)
 
-# 🔑 Teri API Key (Ek Hi)
+# 🔑 Teri API Key
 VALID_KEY = "DEMO"
 
-# 🔥 Original API details — Environment Variable se lo (code mein mat dikha)
-ORIGINAL_API_URL = os.environ.get('ORIGINAL_API_URL', 'http://uersxinfo.in/api')
-ORIGINAL_KEY = os.environ.get('ORIGINAL_KEY', 'newd64')
+# Original API details
+ORIGINAL_API_URL = "http://uersxinfo.in/api"
+ORIGINAL_KEY = "newd64"
 
-# 🔥 API Expiry Date (19 September 2026 — parso raat)
+# 🔥 API Expiry Date
 API_EXPIRY = "2026-09-19"
 
 def is_expired():
     try:
         expiry = datetime.strptime(API_EXPIRY, "%Y-%m-%d")
-        return datetime.utcnow() > expiry
+        return datetime.now() > expiry
     except:
         return False
+
+def format_phone(number):
+    """Format phone number with gap"""
+    if not number:
+        return number
+    num_str = str(number).strip()
+    if len(num_str) == 10:
+        return f"{num_str[:5]} {num_str[5:]}"
+    return num_str
 
 @app.route('/')
 def home():
@@ -34,55 +43,35 @@ def home():
         "endpoints": {
             "info": "/api?key=YOUR_KEY&type=veh_numm&term=VEHICLE_NUMBER"
         },
-        "example": "/api?key=DEMO&type=veh_numm&term=UP16EY3536"
+        "example": "/api?key=DEMO&type=veh_numm&term=MP51ZC3854"
     })
 
 @app.route('/api')
 def vehicle_info():
-    # 🔥 Check if API is expired
     if is_expired():
         return jsonify({
             "status": False,
-            "error": f"API expired on {API_EXPIRY}! Please contact support.",
+            "error": f"API expired on {API_EXPIRY}!",
             "developer": "@x_TRACEOWNER",
             "credit": "@x_TRACEOWNER",
             "expires_on": API_EXPIRY
         }), 401
     
-    # Get parameters
     key = request.args.get('key')
     term = request.args.get('term')
     query_type = request.args.get('type', 'veh_numm')
     
-    # 🔐 Key verify (ek hi key)
     if not key:
-        return jsonify({
-            "status": False,
-            "error": "Missing API Key!",
-            "developer": "@x_TRACEOWNER",
-            "credit": "@x_TRACEOWNER"
-        }), 400
+        return jsonify({"status": False, "error": "Missing API Key!", "developer": "@x_TRACEOWNER", "credit": "@x_TRACEOWNER"}), 400
         
     if key != VALID_KEY:
-        return jsonify({
-            "status": False,
-            "error": "Invalid API Key!",
-            "developer": "@x_TRACEOWNER",
-            "credit": "@x_TRACEOWNER"
-        }), 401
+        return jsonify({"status": False, "error": "Invalid API Key!", "developer": "@x_TRACEOWNER", "credit": "@x_TRACEOWNER"}), 401
     
     if not term:
-        return jsonify({
-            "status": False,
-            "error": "Missing 'term' parameter!",
-            "developer": "@x_TRACEOWNER",
-            "credit": "@x_TRACEOWNER"
-        }), 400
+        return jsonify({"status": False, "error": "Missing 'term' parameter!", "developer": "@x_TRACEOWNER", "credit": "@x_TRACEOWNER"}), 400
     
-    # Clean vehicle number
     term = term.strip().upper()
     
-    # Forward to original API
     params = {
         'key': ORIGINAL_KEY,
         'type': query_type,
@@ -90,28 +79,24 @@ def vehicle_info():
     }
     
     try:
-        response = requests.get(ORIGINAL_API_URL, params=params, timeout=10)
+        response = requests.get(ORIGINAL_API_URL, params=params, timeout=15)
         response.raise_for_status()
         data = response.json()
         
-        # 🔥 Clean response
         if isinstance(data, dict):
-            # Remove unwanted fields
-            data.pop('developer', None)
-            data.pop('key_details', None)
-            data.pop('status_code', None)
-            data.pop('http_status', None)
+            mobile_number = None
+            vehicle_number = None
             
-            # Remove nested unwanted fields
+            # Extract data
             if 'data' in data and isinstance(data['data'], dict):
-                data['data'].pop('response_time_seconds', None)
-                data['data'].pop('limitsInfo', None)
-                data['data'].pop('success', None)
-                data['data'].pop('cached', None)
-                data['data'].pop('response_time', None)
+                if 'result' in data['data'] and isinstance(data['data']['result'], dict):
+                    mobile_number = data['data']['result'].get('mobile_no')
+                    vehicle_number = data['data']['result'].get('vnum')
+                elif 'data' in data['data'] and isinstance(data['data']['data'], dict):
+                    mobile_number = data['data']['data'].get('mobile_number')
+                    vehicle_number = data['data']['data'].get('vehicle_number')
             
-            # Check if mobile_number exists
-            if not data.get('mobileNumber') or data.get('mobileNumber') == "":
+            if not mobile_number or mobile_number == "":
                 return jsonify({
                     "status": False,
                     "message": "No data found",
@@ -119,19 +104,11 @@ def vehicle_info():
                     "credit": "@x_TRACEOWNER"
                 }), 404
             
-            # 🔥 Clean response
+            # 🔥 Final Response
             response_data = {
-                "status": "success",
-                "vehicleNumber": data.get('vehicleNumber', term),
-                "mobileNumber": data.get('mobileNumber', ''),
-                "mobileDetected": data.get('mobileDetected', True),
-                "data": {
-                    "data": {
-                        "vehicle_number": data.get('vehicleNumber', term),
-                        "mobile_number": data.get('mobileNumber', '')
-                    }
-                },
-                "success": True,
+                "status": True,
+                "vehicle_number": vehicle_number or term,
+                "mobile_number": format_phone(mobile_number),
                 "developer": "@x_TRACEOWNER",
                 "credit": "@x_TRACEOWNER",
                 "api_expires_on": API_EXPIRY
@@ -139,30 +116,6 @@ def vehicle_info():
             
             return jsonify(response_data)
         
-        return jsonify({
-            "status": False,
-            "message": "No data found",
-            "developer": "@x_TRACEOWNER",
-            "credit": "@x_TRACEOWNER"
-        }), 404
-        
-    except requests.exceptions.Timeout:
-        return jsonify({
-            "status": False,
-            "message": "Request timeout. Please try again later.",
-            "developer": "@x_TRACEOWNER",
-            "credit": "@x_TRACEOWNER"
-        }), 504
-        
-    except requests.exceptions.ConnectionError:
-        return jsonify({
-            "status": False,
-            "message": "No data found",
-            "developer": "@x_TRACEOWNER",
-            "credit": "@x_TRACEOWNER"
-        }), 404
-        
-    except requests.exceptions.RequestException as e:
         return jsonify({
             "status": False,
             "message": "No data found",
